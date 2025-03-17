@@ -16,7 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
+from ai_email.views import get_emails
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path("emails/", get_emails, name="get_emails"),
 ]
