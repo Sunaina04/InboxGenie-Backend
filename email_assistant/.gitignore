@@ -1,3 +1,6 @@
 env/
 config/*.json
 ai_email/*.json
+email_assistant/ai_email/__pycache__
+email_assistant/token.json
+ai_email/.env

@@ -8,7 +8,8 @@ from googleapiclient.discovery import build
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
 
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+# SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+SCOPES = ["https://mail.google.com/"]
 
 def authenticate_gmail():
     """Authenticate and return Gmail API service"""
