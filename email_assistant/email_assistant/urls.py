@@ -16,12 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from ai_email.views import get_emails
-from ai_email.views import generate_email_reply
+from ai_email.views import get_emails, generate_email_reply, send_ai_email
 
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path("emails/", get_emails, name="get_emails"),
     path("generate-reply/", generate_email_reply, name="generate_email_reply"),
+    path("send_ai_email/", send_ai_email, name="send_ai_email"),
 ]

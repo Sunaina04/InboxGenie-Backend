@@ -70,7 +70,6 @@ def fetch_emails():
       subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "No Subject")
       date = next((h["value"] for h in headers if h["name"].lower() == "date"), "Unknown Date")
 
-
       body = get_email_body(email_data)
       full_email.append({
             "id": msg_id,
