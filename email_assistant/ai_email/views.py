@@ -3,6 +3,7 @@ from django.core.mail import send_mail
 from .utils import fetch_emails
 import google.generativeai as genai
 from dotenv import load_dotenv
+from django.conf import settings 
 import os
 import json
 from django.views.decorators.csrf import csrf_exempt
@@ -33,10 +34,11 @@ def generate_email_reply(request):
     if request.method == "POST":
         try:
             data = json.loads(request.body)
+            print(request.body)
             email_body = data.get("email_body", "")
-            sender = data.get("from", "")  # Sender's email (who sent the email)
-            recipient = data.get("to", "")  # Your email (receiving the email)
-            subject = data.get("subject", "Re: No Subject")  # Reply subject
+            sender = data.get("from", "")
+            recipient = data.get("to", "")
+            subject = data.get("subject", "Re: No Subject")
 
             if not email_body:
                 return JsonResponse({"error": "Email body is required."}, status=400)
@@ -60,21 +62,23 @@ def generate_email_reply(request):
 def send_ai_email(request):
     """Send AI-generated email reply using Django send_mail"""
     if request.method == "POST":
+
         try:
             data = json.loads(request.body)
-            sender = data.get("from", "")  
             recipient = data.get("to", "")
             subject = data.get("subject", "AI Response")  
             email_body = data.get("body", "")
 
-            if not sender or not recipient or not email_body:
+            if not recipient or not email_body:
                 return JsonResponse({"error": "Missing required fields."}, status=400)
+            
+            sender_email = settings.EMAIL_HOST_USER
 
             # Sending email using Django send_mail
             send_mail(
                 subject,
                 email_body,
-                sender,
+                sender_email,
                 [recipient],
                 fail_silently=False,
             )
