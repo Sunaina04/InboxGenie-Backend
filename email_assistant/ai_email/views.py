@@ -7,6 +7,7 @@ from django.conf import settings
 import os
 import json
 from django.views.decorators.csrf import csrf_exempt
+from .services.gemini_ai import generate_manual_response
 
 load_dotenv()
 
@@ -17,6 +18,7 @@ def get_emails(request):
     emails = fetch_emails()
     return JsonResponse({"emails": emails})
 
+# For Raw AI responses
 def generate_ai_response(email_body):
     """Generate an AI response using Gemini"""
     if not email_body.strip():
@@ -43,11 +45,11 @@ def generate_email_reply(request):
             if not email_body:
                 return JsonResponse({"error": "Email body is required."}, status=400)
 
-            ai_response = generate_ai_response(email_body)
+            ai_response = generate_manual_response(email_body)
 
             return JsonResponse({
-                "from": recipient,   # You become the sender
-                "to": sender,        # Reply goes to original sender
+                "from": recipient,  
+                "to": sender,
                 "subject": f"Re: {subject}",
                 "body": ai_response
             })
