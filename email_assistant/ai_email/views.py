@@ -111,6 +111,7 @@ def send_ai_email(request):
 
   return JsonResponse({"error": "Only POST requests are allowed."}, status=405)
 
+@csrf_exempt
 def auto_reply_inquiry_emails(request):
   """Automatically reply to all filtered inquiry emails with AI-generated responses."""
   if request.method == "POST":
