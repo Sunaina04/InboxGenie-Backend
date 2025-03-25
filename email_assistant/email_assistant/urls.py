@@ -16,7 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from ai_email.views import get_emails, generate_email_reply, send_ai_email, sent_emails_view
+from ai_email.views import get_emails, generate_email_reply, send_ai_email, sent_emails_view, auto_reply_inquiry_emails
 
 
 urlpatterns = [
@@ -25,4 +25,5 @@ urlpatterns = [
     path("sent_mails/", sent_emails_view, name="sent_emails"),
     path("generate-reply/", generate_email_reply, name="generate_email_reply"),
     path("send_ai_email/", send_ai_email, name="send_ai_email"),
+    path("auto-reply-inquiries/", auto_reply_inquiry_emails, name="auto_reply_inquiry_emails"),
 ]
