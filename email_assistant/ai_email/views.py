@@ -1,6 +1,6 @@
 from django.http import JsonResponse
 from django.core.mail import send_mail
-from .utils import fetch_emails
+from .utils import fetch_emails, fetch_sent_emails
 import google.generativeai as genai
 from dotenv import load_dotenv
 from django.conf import settings 
@@ -17,6 +17,11 @@ def get_emails(request):
     """Django view to return fetched emails"""
     emails = fetch_emails()
     return JsonResponse({"emails": emails})
+
+def sent_emails_view(request):
+    """Fetch and return sent emails as JSON"""
+    sent_emails = fetch_sent_emails()
+    return JsonResponse({"sent_emails": sent_emails})
 
 # For Raw AI responses
 def generate_ai_response(email_body):

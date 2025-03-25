@@ -82,3 +82,32 @@ def fetch_emails():
 
     return full_email
 
+def fetch_sent_emails():
+    """Fetch latest sent emails from Gmail API"""
+    service = authenticate_gmail()
+    
+    results = service.users().messages().list(userId='me', labelIds=['SENT'], maxResults=10).execute()
+    messages = results.get("messages", [])
+
+    sent_emails = []
+    for msg in messages:
+        msg_id = msg["id"]
+        email_data = service.users().messages().get(userId='me', id=msg_id).execute()
+
+        headers = email_data["payload"]["headers"]
+        sender = next((h["value"] for h in headers if h["name"] == "From"), "Unknown Sender")
+        recipient = next((h["value"] for h in headers if h["name"].lower() == "to"), "Unknown Recipient")
+        subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "No Subject")
+        date = next((h["value"] for h in headers if h["name"].lower() == "date"), "Unknown Date")
+
+        body = get_email_body(email_data)
+        sent_emails.append({
+            "id": msg_id,
+            "from": sender,
+            "to": recipient,
+            "subject": subject,
+            "date": date,
+            "body": body,
+        })
+
+    return sent_emails
