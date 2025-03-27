@@ -28,7 +28,7 @@ from ai_email.views import (
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("emails/", get_emails, name="get_emails"),
-    path("sent-emails/", sent_emails_view, name="sent_emails"),
+    path("sent-mails/", sent_emails_view, name="sent_emails"),
     path("generate-reply/", generate_email_reply, name="generate_reply"),
     path("send-email/", send_ai_email, name="send_email"),
     path("auto-reply/", auto_reply_inquiry_emails, name="auto_reply"),
