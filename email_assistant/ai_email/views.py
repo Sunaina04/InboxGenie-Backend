@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from django.core.mail import send_mail
 from django.shortcuts import redirect
-from .utils import fetch_emails, fetch_sent_emails
+from .utils import fetch_emails, fetch_sent_emails, delete_email
 import google.generativeai as genai
 from dotenv import load_dotenv
 from django.conf import settings 
@@ -15,6 +15,9 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from datetime import datetime
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
 
 load_dotenv()
 
@@ -22,7 +25,7 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 def get_emails(request):
   """Django view to return fetched emails"""
-  emails = fetch_emails()
+  emails, user_info = fetch_emails()
   
   # Debug information
   print(f"Total emails fetched: {len(emails)}")
@@ -45,7 +48,7 @@ def get_emails(request):
   elif request.GET.get("grievance") == "true":
       emails = [email for email in emails if "grievance" in email.get("categories", [])]
 
-  return JsonResponse({"emails": emails})
+  return JsonResponse({"emails": emails, "user_info": user_info})
 
 def is_inquiry_email(email):
   """Check if an email is an inquiry email based on subject or content."""
@@ -57,7 +60,7 @@ def is_inquiry_email(email):
 
 def sent_emails_view(request):
   """Fetch and return sent emails as JSON"""
-  sent_emails = fetch_sent_emails(request)
+  sent_emails = fetch_sent_emails()
   return JsonResponse({"sent_emails": sent_emails})
 
 # For Raw AI responses
@@ -218,3 +221,15 @@ def auto_reply_inquiry_emails(request):
           return JsonResponse({"error": str(e)}, status=500)
 
   return JsonResponse({"error": "Only POST requests are allowed."}, status=405)
+@csrf_exempt 
+def delete_email_view(request, message_id):
+    """
+    Delete an email from Gmail account
+    """
+    if request.method != 'DELETE':
+        return JsonResponse({"error": "Only DELETE requests are allowed."}, status=405)
+        
+    success, message = delete_email(message_id)
+    if success:
+        return JsonResponse({"message": message}, status=200)
+    return JsonResponse({"error": message}, status=400)

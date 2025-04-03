@@ -9,11 +9,9 @@ from google.auth.transport.requests import Request
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
 
-# SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 SCOPES = [
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.modify",
-    "https://www.googleapis.com/auth/gmail.readonly"
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.modify'  # This scope allows deleting emails
 ]
 
 def authenticate_gmail():
@@ -74,10 +72,22 @@ def is_grievance_email(email):
     return any(keyword in subject or keyword in body for keyword in grievance_keywords)
 
 def fetch_emails():
-    """Fetch latest emails from Gmail API"""
-    
+    """Fetch latest emails from Gmail API"""    
     
     service = authenticate_gmail()
+    if not service:
+      return [], None  
+    user_profile = service.users().getProfile(userId='me').execute()
+    user_email = user_profile.get('emailAddress')
+    username = user_email.split('@')[0] if user_email else '' 
+    
+    # Get user info from Gmail API
+    user_info = {
+        'email': user_email,
+        'name': username,
+    }
+
+    print(f"Fetching emails for user: {user_info}")
            
     # Add labelIds=['INBOX'] to only fetch received emails
     try:
@@ -129,7 +139,7 @@ def fetch_emails():
         continue
 
     print(f"Successfully processed {len(full_email)} emails")
-    return full_email
+    return full_email, user_info
 
 def fetch_sent_emails():
     """Fetch latest sent emails from Gmail API"""
@@ -160,3 +170,12 @@ def fetch_sent_emails():
         })
 
     return sent_emails
+
+def delete_email(message_id):
+    """Delete an email from Gmail account"""
+    try:
+        service = authenticate_gmail()
+        service.users().messages().trash(userId='me', id=message_id).execute()
+        return True, "Email deleted successfully"
+    except Exception as e:
+        return False, f"Error deleting email: {str(e)}"
