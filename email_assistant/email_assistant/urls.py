@@ -23,6 +23,7 @@ from ai_email.views import (
     send_ai_email, 
     auto_reply_inquiry_emails,
     delete_email_view,
+    google_login,
 )
 
 urlpatterns = [
@@ -33,5 +34,5 @@ urlpatterns = [
     path("send-email/", send_ai_email, name="send_email"),
     path("auto-reply/", auto_reply_inquiry_emails, name="auto_reply"),
     path('delete-email/<str:message_id>/', delete_email_view, name='delete_email'),
-    
+    path('auth/google-login/', google_login, name='google_login'),
 ]

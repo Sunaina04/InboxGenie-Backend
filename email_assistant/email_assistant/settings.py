@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -56,19 +57,41 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
+CREDENTIALS_PATH = os.path.join(BASE_DIR, 'ai_email/credentials.json')
+with open(CREDENTIALS_PATH) as f:
+    credentials_data = json.load(f)
+
+GOOGLE_CLIENT_ID = credentials_data["web"]["client_id"]
+
 CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
-    "http://127.0.0.1:8000",
-    "http://127.0.0.1:8080",
-    "http://127.0.0.1:3000",
-    "http://localhost",
-    "http://localhost:3001",
-    "http://localhost:8080",
-    "http://localhost:8000",
-    "http://127.0.0.1",
+    "http://localhost:3000",
+]
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -101,7 +124,11 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'email_assistant.wsgi.application'
-
+REST_FRAMEWORK = {
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',  # Ensure JSON rendering
+    ]
+}
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
@@ -113,7 +140,7 @@ DATABASES = {
         'USER': 'postgres', 
         'PASSWORD': 'password',  
         'HOST': 'localhost',  
-        'PORT': '5432',  
+        'PORT': '5433',  
     }
 }
 
@@ -164,6 +191,6 @@ EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER") 
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+EMAIL_HOST_USER = "inboxgenie3@gmail.com"
+EMAIL_HOST_PASSWORD = "fbrclyguyevsgozt"
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER

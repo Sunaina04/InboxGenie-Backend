@@ -14,20 +14,20 @@ SCOPES = [
     'https://www.googleapis.com/auth/gmail.modify'  # This scope allows deleting emails
 ]
 
-def authenticate_gmail():
-    """Authenticate and return Gmail API service"""
-    creds = None
+# def authenticate_gmail():
+#     """Authenticate and return Gmail API service"""
+#     creds = None
 
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+#     if os.path.exists("token.json"):
+#         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
-    if not creds or not creds.valid:
-        flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-        creds = flow.run_local_server(port=8080, access_type="offline", prompt="consent")
-        with open("token.json", "w") as token:
-            token.write(creds.to_json())
+#     if not creds or not creds.valid:
+#         flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
+#         creds = flow.run_local_server(port=8080, access_type="offline", prompt="consent")
+#         with open("token.json", "w") as token:
+#             token.write(creds.to_json())
 
-    return build("gmail", "v1", credentials=creds)
+#     return build("gmail", "v1", credentials=creds)
 
 def decode_base64(data):
     """Decodes Base64-encoded email body from Gmail API"""
@@ -71,111 +71,151 @@ def is_grievance_email(email):
 
     return any(keyword in subject or keyword in body for keyword in grievance_keywords)
 
-def fetch_emails():
-    """Fetch latest emails from Gmail API"""    
+def fetch_emails(access_token):
+    """Fetch latest emails from Gmail API using the provided access token"""    
     
-    service = authenticate_gmail()
-    if not service:
-      return [], None  
-    user_profile = service.users().getProfile(userId='me').execute()
-    user_email = user_profile.get('emailAddress')
-    username = user_email.split('@')[0] if user_email else '' 
-    
-    # Get user info from Gmail API
-    user_info = {
-        'email': user_email,
-        'name': username,
-    }
-
-    print(f"Fetching emails for user: {user_info}")
-           
-    # Add labelIds=['INBOX'] to only fetch received emails
     try:
+        # Create credentials from the access token
+        creds = Credentials(token=access_token)
+        service = build("gmail", "v1", credentials=creds)
+        
+        if not service:
+            return [], None  
+            
+        # Get user profile
+        user_profile = service.users().getProfile(userId='me').execute()
+        user_email = user_profile.get('emailAddress')
+        username = user_email.split('@')[0] if user_email else '' 
+        
+        # Get user info from Gmail API
+        user_info = {
+            'email': user_email,
+            'name': username,
+        }
+
+        print(f"Fetching emails for user: {user_info}")
+               
+        # Add labelIds=['INBOX'] to only fetch received emails
         results = service.users().messages().list(userId='me', labelIds=['INBOX'], maxResults=5).execute()
         messages = results.get("messages", [])
         print(f"Found {len(messages)} messages in inbox")
+
+        full_email = []
+        for msg in messages:
+            try:
+                msg_id = msg["id"]
+                email_data = service.users().messages().get(userId='me', id=msg_id).execute()
+
+                headers = email_data["payload"]["headers"]
+                sender = next((h["value"] for h in headers if h["name"] == "From"), "Unknown Sender")
+                recipient = next((h["value"] for h in headers if h["name"].lower() == "to"), "Unknown Recipient")
+                subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "No Subject")
+                date = next((h["value"] for h in headers if h["name"].lower() == "date"), "Unknown Date")
+                
+                # Get read status from labelIds
+                label_ids = email_data.get("labelIds", [])
+                is_read = "UNREAD" not in label_ids
+
+                body = get_email_body(email_data)
+                email_obj = {
+                    "id": msg_id,
+                    "from": sender,
+                    "to": recipient,
+                    "subject": subject,
+                    "date": date,
+                    "body": body,
+                    "is_read": is_read,
+                    "categories": []
+                }
+
+                # Add email categories
+                if is_support_email(email_obj):
+                    email_obj["categories"].append("support")
+                if is_grievance_email(email_obj):
+                    email_obj["categories"].append("grievance")
+
+                full_email.append(email_obj)
+                print(f"Processed email: {subject}")
+            except Exception as e:
+                print(f"Error processing message {msg.get('id', 'unknown')}: {str(e)}")
+                continue
+
+        print(f"Successfully processed {len(full_email)} emails")
+        return full_email, user_info
+        
     except Exception as e:
-        print(f"Error fetching messages: {str(e)}")
+        print(f"Error in fetch_emails: {str(e)}")
+        return [], None
+
+def fetch_sent_emails(access_token):
+    """Fetch sent emails from Gmail API using the provided access token"""
+    try:
+        # Create credentials from the access token
+        creds = Credentials(token=access_token)
+        service = build("gmail", "v1", credentials=creds)
+        
+        if not service:
+            return []
+            
+        # Get sent emails
+        results = service.users().messages().list(
+            userId='me',
+            labelIds=['SENT'],
+            maxResults=5
+        ).execute()
+        
+        messages = results.get("messages", [])
+        print(f"Found {len(messages)} sent messages")
+
+        sent_emails = []
+        for msg in messages:
+            try:
+                msg_id = msg["id"]
+                email_data = service.users().messages().get(userId='me', id=msg_id).execute()
+
+                headers = email_data["payload"]["headers"]
+                sender = next((h["value"] for h in headers if h["name"] == "From"), "Unknown Sender")
+                recipient = next((h["value"] for h in headers if h["name"].lower() == "to"), "Unknown Recipient")
+                subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "No Subject")
+                date = next((h["value"] for h in headers if h["name"].lower() == "date"), "Unknown Date")
+
+                body = get_email_body(email_data)
+                email_obj = {
+                    "id": msg_id,
+                    "from": sender,
+                    "to": recipient,
+                    "subject": subject,
+                    "date": date,
+                    "body": body
+                }
+
+                sent_emails.append(email_obj)
+                print(f"Processed sent email: {subject}")
+            except Exception as e:
+                print(f"Error processing sent message {msg.get('id', 'unknown')}: {str(e)}")
+                continue
+
+        print(f"Successfully processed {len(sent_emails)} sent emails")
+        return sent_emails
+        
+    except Exception as e:
+        print(f"Error in fetch_sent_emails: {str(e)}")
         return []
 
-    full_email = []
-    for msg in messages:
-      try:
-        msg_id = msg["id"]
-        email_data = service.users().messages().get(userId='me', id=msg_id).execute()
-
-        headers = email_data["payload"]["headers"]
-        sender = next((h["value"] for h in headers if h["name"] == "From"), "Unknown Sender")
-        recipient = next((h["value"] for h in headers if h["name"].lower() == "to"), "Unknown Recipient")
-        subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "No Subject")
-        date = next((h["value"] for h in headers if h["name"].lower() == "date"), "Unknown Date")
-        
-        # Get read status from labelIds
-        label_ids = email_data.get("labelIds", [])
-        is_read = "UNREAD" not in label_ids
-
-        body = get_email_body(email_data)
-        email_obj = {
-              "id": msg_id,
-              "from": sender,
-              "to": recipient,
-              "subject": subject,
-              "date": date,
-              "body": body,
-              "is_read": is_read,
-              "categories": []
-        }
-
-        # Add email categories
-        if is_support_email(email_obj):
-            email_obj["categories"].append("support")
-        if is_grievance_email(email_obj):
-            email_obj["categories"].append("grievance")
-
-        full_email.append(email_obj)
-        print(f"Processed email: {subject}")
-      except Exception as e:
-        print(f"Error processing message {msg.get('id', 'unknown')}: {str(e)}")
-        continue
-
-    print(f"Successfully processed {len(full_email)} emails")
-    return full_email, user_info
-
-def fetch_sent_emails():
-    """Fetch latest sent emails from Gmail API"""
-    service = authenticate_gmail()
-    
-    results = service.users().messages().list(userId='me', labelIds=['SENT'], maxResults=10).execute()
-    messages = results.get("messages", [])
-
-    sent_emails = []
-    for msg in messages:
-        msg_id = msg["id"]
-        email_data = service.users().messages().get(userId='me', id=msg_id).execute()
-
-        headers = email_data["payload"]["headers"]
-        sender = next((h["value"] for h in headers if h["name"] == "From"), "Unknown Sender")
-        recipient = next((h["value"] for h in headers if h["name"].lower() == "to"), "Unknown Recipient")
-        subject = next((h["value"] for h in headers if h["name"].lower() == "subject"), "No Subject")
-        date = next((h["value"] for h in headers if h["name"].lower() == "date"), "Unknown Date")
-
-        body = get_email_body(email_data)
-        sent_emails.append({
-            "id": msg_id,
-            "from": sender,
-            "to": recipient,
-            "subject": subject,
-            "date": date,
-            "body": body,
-        })
-
-    return sent_emails
-
-def delete_email(message_id):
-    """Delete an email from Gmail account"""
+def delete_email(message_id, access_token):
+    """Delete an email from Gmail using the provided access token"""
     try:
-        service = authenticate_gmail()
+        # Create credentials from the access token
+        creds = Credentials(token=access_token)
+        service = build("gmail", "v1", credentials=creds)
+        
+        if not service:
+            return False, "Failed to initialize Gmail service"
+
+        # Delete the email
         service.users().messages().trash(userId='me', id=message_id).execute()
         return True, "Email deleted successfully"
+        
     except Exception as e:
-        return False, f"Error deleting email: {str(e)}"
+        print(f"Error deleting email: {str(e)}")
+        return False, str(e)

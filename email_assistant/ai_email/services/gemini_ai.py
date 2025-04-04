@@ -17,9 +17,11 @@ def generate_manual_response(email_body):
     
     # Create a structured prompt
     prompt = f"""
-    You are a customer support assistant for a washing machine company. 
+    You are a customer support assistant for a washing machine company.
     Use the following manual information to provide a professional response.
-
+    use manual information to answer the customer query. Extract company name and product description from manual.  
+    use company name as ACC PVT. LTD. 
+    
     MANUAL INFORMATION:
     {context}
 

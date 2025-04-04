@@ -1,54 +1,117 @@
+from rest_framework.decorators import api_view, renderer_classes
+from rest_framework.response import Response
+from rest_framework import status
 from django.http import JsonResponse
 from django.core.mail import send_mail
-from django.shortcuts import redirect
 from .utils import fetch_emails, fetch_sent_emails, delete_email
 import google.generativeai as genai
 from dotenv import load_dotenv
 from django.conf import settings 
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from django.contrib.auth import get_user_model   
 import os
 import json
 from django.views.decorators.csrf import csrf_exempt
 from .services.gemini_ai import generate_manual_response
-from google_auth_oauthlib.flow import Flow
-from django.urls import reverse
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-from datetime import datetime
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
+from django.contrib.auth import login
+from rest_framework.renderers import JSONRenderer
+
+
 
 load_dotenv()
-
+User = get_user_model()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
+@csrf_exempt
+@api_view(['POST'])
+@renderer_classes([JSONRenderer])
+def google_login(request):
+    token = request.data.get('id_token')
+
+    if not token:
+        return Response({'error': 'ID token is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        # 1. Verify ID Token with clock skew tolerance
+        idinfo = id_token.verify_oauth2_token(
+            token, 
+            requests.Request(), 
+            settings.GOOGLE_CLIENT_ID,
+            clock_skew_in_seconds=10  # Allow 10 seconds of clock skew
+        )
+
+        email = idinfo['email']
+        name = idinfo.get('name', '')
+
+        # 2. Get or Create User
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={"username": email, "first_name": name}
+        )
+
+        # 3. Log in User
+        login(request, user)
+
+        return Response({
+            "message": "Logged in successfully",
+            "user": {
+                "email": email,
+                "name": name,
+                "is_new": created
+            }
+        })
+
+    except ValueError as e:
+        return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@renderer_classes([JSONRenderer])
 def get_emails(request):
-  """Django view to return fetched emails"""
-  emails, user_info = fetch_emails()
-  
-  # Debug information
-  print(f"Total emails fetched: {len(emails)}")
-  read_emails = [email for email in emails if email.get("is_read", False)]
-  print(f"Read emails count: {len(read_emails)}")
-  print("Email read statuses:", [email.get("is_read", False) for email in emails])
+    """Django view to return fetched emails"""
+    # Get access token from Authorization header
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return Response({'error': 'Invalid Authorization header format'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    access_token = auth_header.split('Bearer ')[1]
+    if not access_token:
+        return Response({'error': 'Access token is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Fetch emails using the access token
+        emails, user_info = fetch_emails(access_token)
+        
+        # Debug information
+        print(f"Total emails fetched: {len(emails)}")
+        read_emails = [email for email in emails if email.get("is_read", False)]
+        print(f"Read emails count: {len(read_emails)}")
+        print("Email read statuses:", [email.get("is_read", False) for email in emails])
 
-  # Filter by read status if specified
-  if request.GET.get("read") == "true":
-      emails = [email for email in emails if email.get("is_read", False)]  # Show read emails
-      print(f"Filtered read emails count: {len(emails)}")
-  elif request.GET.get("read") == "false":
-      emails = [email for email in emails if not email.get("is_read", False)]  # Show unread emails
-      print(f"Filtered unread emails count: {len(emails)}")
-  # Filter by category if specified
-  elif request.GET.get("inquiry") == "true":
-      emails = [email for email in emails if "inquiry" in email.get("categories", [])]
-  elif request.GET.get("support") == "true":
-      emails = [email for email in emails if "support" in email.get("categories", [])]
-  elif request.GET.get("grievance") == "true":
-      emails = [email for email in emails if "grievance" in email.get("categories", [])]
+        # Filter by read status if specified
+        if request.GET.get("read") == "true":
+            emails = [email for email in emails if email.get("is_read", False)]  # Show read emails
+            print(f"Filtered read emails count: {len(emails)}")
+        elif request.GET.get("read") == "false":
+            emails = [email for email in emails if not email.get("is_read", False)]  # Show unread emails
+            print(f"Filtered unread emails count: {len(emails)}")
+        # Filter by category if specified
+        elif request.GET.get("inquiry") == "true":
+            emails = [email for email in emails if "inquiry" in email.get("categories", [])]
+        elif request.GET.get("support") == "true":
+            emails = [email for email in emails if "support" in email.get("categories", [])]
+        elif request.GET.get("grievance") == "true":
+            emails = [email for email in emails if "grievance" in email.get("categories", [])]
 
-  return JsonResponse({"emails": emails, "user_info": user_info})
+        return Response({
+            "emails": emails,
+            "user_info": user_info
+        })
+    except Exception as e:
+        print(f"Error fetching emails: {str(e)}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 def is_inquiry_email(email):
   """Check if an email is an inquiry email based on subject or content."""
@@ -58,10 +121,24 @@ def is_inquiry_email(email):
 
   return any(keyword in subject or keyword in body for keyword in inquiry_keywords)
 
+@api_view(['GET'])
+@renderer_classes([JSONRenderer])
 def sent_emails_view(request):
-  """Fetch and return sent emails as JSON"""
-  sent_emails = fetch_sent_emails()
-  return JsonResponse({"sent_emails": sent_emails})
+    """Fetch and return sent emails as JSON"""
+    # Get access token from Authorization header
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return Response({'error': 'Invalid Authorization header format'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    access_token = auth_header.split('Bearer ')[1]
+    if not access_token:
+        return Response({'error': 'Access token is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        sent_emails = fetch_sent_emails(access_token)
+        return Response({"sent_emails": sent_emails})
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # For Raw AI responses
 def generate_ai_response(email_body):
@@ -105,39 +182,33 @@ def generate_email_reply(request):
   return JsonResponse({"error": "Only POST requests are allowed."}, status=405)
 
  
-@csrf_exempt
+@api_view(['POST'])
+@renderer_classes([JSONRenderer])
 def send_ai_email(request):
-  """Send AI-generated email reply using Django send_mail"""
-  if request.method == "POST":
+    """Send AI-generated email reply using Django send_mail"""
+    try:
+        recipient = request.data.get("to", "")
+        subject = request.data.get("subject", "AI Response")  
+        email_body = request.data.get("body", "")
 
-      try:
-          data = json.loads(request.body)
-          recipient = data.get("to", "")
-          subject = data.get("subject", "AI Response")  
-          email_body = data.get("body", "")
+        if not recipient or not email_body:
+            return Response({"error": "Missing required fields."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        sender_email = settings.EMAIL_HOST_USER
 
-          if not recipient or not email_body:
-              return JsonResponse({"error": "Missing required fields."}, status=400)
-          
-          sender_email = settings.EMAIL_HOST_USER
+        # Sending email using Django send_mail
+        send_mail(
+            subject,
+            email_body,
+            sender_email,
+            [recipient],
+            fail_silently=False,
+        )
 
-          # Sending email using Django send_mail
-          send_mail(
-              subject,
-              email_body,
-              sender_email,
-              [recipient],
-              fail_silently=False,
-          )
+        return Response({"message": "Email sent successfully."})
 
-          return JsonResponse({"message": "Email sent successfully."})
-
-      except json.JSONDecodeError:
-          return JsonResponse({"error": "Invalid JSON format."}, status=400)
-      except Exception as e:
-          return JsonResponse({"error": str(e)}, status=500)
-
-  return JsonResponse({"error": "Only POST requests are allowed."}, status=405)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @csrf_exempt
 def auto_reply_inquiry_emails(request):
@@ -221,15 +292,26 @@ def auto_reply_inquiry_emails(request):
           return JsonResponse({"error": str(e)}, status=500)
 
   return JsonResponse({"error": "Only POST requests are allowed."}, status=405)
-@csrf_exempt 
+
+@api_view(['DELETE'])
+@renderer_classes([JSONRenderer])
 def delete_email_view(request, message_id):
     """
     Delete an email from Gmail account
     """
-    if request.method != 'DELETE':
-        return JsonResponse({"error": "Only DELETE requests are allowed."}, status=405)
-        
-    success, message = delete_email(message_id)
-    if success:
-        return JsonResponse({"message": message}, status=200)
-    return JsonResponse({"error": message}, status=400)
+    # Get access token from Authorization header
+    auth_header = request.headers.get('Authorization', '')
+    if not auth_header.startswith('Bearer '):
+        return Response({'error': 'Invalid Authorization header format'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    access_token = auth_header.split('Bearer ')[1]
+    if not access_token:
+        return Response({'error': 'Access token is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        success, message = delete_email(message_id, access_token)
+        if success:
+            return Response({"message": message}, status=status.HTTP_200_OK)
+        return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
