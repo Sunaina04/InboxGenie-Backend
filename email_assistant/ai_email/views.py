@@ -17,8 +17,6 @@ from .services.gemini_ai import generate_manual_response
 from django.contrib.auth import login
 from rest_framework.renderers import JSONRenderer
 
-
-
 load_dotenv()
 User = get_user_model()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -113,13 +111,23 @@ def get_emails(request):
         print(f"Error fetching emails: {str(e)}")
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-def is_inquiry_email(email):
-  """Check if an email is an inquiry email based on subject or content."""
-  inquiry_keywords = ["inquiry", "question", "help", "support", "request", "info"]
-  subject = email.get("subject", "").lower()
-  body = email.get("body", "").lower()
 
-  return any(keyword in subject or keyword in body for keyword in inquiry_keywords)
+
+# def is_support_email(email):
+#     """Check if an email is a support-related email based on subject or content."""
+#     support_keywords = ["support", "help", "assistance", "technical", "issue", "problem", "troubleshoot", "bug", "error"]
+#     subject = email.get("subject", "").lower()
+#     body = email.get("body", "").lower()
+
+#     return any(keyword in subject or keyword in body for keyword in support_keywords)
+
+# def is_grievance_email(email):
+#     """Check if an email is a grievance/complaint email based on subject or content."""
+#     grievance_keywords = ["complaint", "grievance", "dispute", "unhappy", "dissatisfied", "wrong", "incorrect", "bad", "poor", "terrible"]
+#     subject = email.get("subject", "").lower()
+#     body = email.get("body", "").lower()
+
+#     return any(keyword in subject or keyword in body for keyword in grievance_keywords)
 
 @api_view(['GET'])
 @renderer_classes([JSONRenderer])
@@ -210,88 +218,102 @@ def send_ai_email(request):
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@csrf_exempt
+@api_view(['POST'])
+@renderer_classes([JSONRenderer])
 def auto_reply_inquiry_emails(request):
-  """Automatically reply to all filtered inquiry emails with AI-generated responses."""
+  """Automatically reply to all filtered inquiry emails with AI-generated responses.""" 
   if request.method == "POST":
-      try:
-          emails = fetch_emails(request)
-          sent_emails = fetch_sent_emails(request)  # Get list of sent emails
+    try:
+        # Get access token from Authorization header
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return Response({'error': 'Invalid Authorization header format'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        access_token = auth_header.split('Bearer ')[1]
+        if not access_token:
+            return Response({'error': 'Access token is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-          # Filter Inquiry Emails
-          inquiry_emails = [email for email in emails if is_inquiry_email(email)]
-          print(f"Found {len(inquiry_emails)} inquiry emails")
+        # Fetch emails using the access token
+        emails, _ = fetch_emails(access_token)
+        sent_emails = fetch_sent_emails(access_token)
 
-          if not inquiry_emails:
-              return JsonResponse({"message": "No inquiry emails found."}, status=200)
+        # Filter Inquiry Emails
+        inquiry_emails = [email for email in emails if is_inquiry_email(email)]
+        print(f"Found {len(inquiry_emails)} inquiry emails")
 
-          sender_email = settings.EMAIL_HOST_USER  # Your configured email
-          responses_sent = []
-          replied_to = set()  # Track unique recipient+subject combinations we've replied to
+        if not inquiry_emails:
+            return Response({"message": "No inquiry emails found."}, status=status.HTTP_200_OK)
 
-          for email in inquiry_emails:
-              # Extract email address from the "From" field which might contain name <email>
-              from_header = email["from"]
-              # Extract email address if it's in the format "Name <email@example.com>"
-              if "<" in from_header and ">" in from_header:
-                  recipient = from_header[from_header.find("<")+1:from_header.find(">")]
-              else:
-                  recipient = from_header.strip()
+        sender_email = settings.EMAIL_HOST_USER
+        responses_sent = []
+        replied_to = set()  # Track unique recipient+subject combinations we've replied to
 
-              # Get the subject and normalize it
-              subject = email["subject"]
-              if not subject.startswith("Re:"):
-                  subject = f"Re: {subject}"
-              
-              # Create a unique key combining recipient and subject
-              email_key = f"{recipient}|{subject}"
+        for email in inquiry_emails:
+            # Extract email address from the "From" field which might contain name <email>
+            from_header = email["from"]
+            # Extract email address if it's in the format "Name <email@example.com>"
+            if "<" in from_header and ">" in from_header:
+                recipient = from_header[from_header.find("<")+1:from_header.find(">")]
+            else:
+                recipient = from_header.strip()
 
-              # Skip if we've already replied to this recipient+subject combination
-              if email_key in replied_to:
-                  print(f"Skipping duplicate reply to {recipient} with subject: {subject}")
-                  continue
+            # Get the subject and normalize it
+            subject = email["subject"]
+            if not subject.startswith("Re:"):
+                subject = f"Re: {subject}"
+            
+            # Create a unique key combining recipient and subject
+            email_key = f"{recipient}_{subject}"
+            
+            # Check if we've already replied to this email
+            if email_key in replied_to:
+                print(f"Skipping already replied email: {subject}")
+                continue
 
-              # Check if we've already sent a reply to this email
-              already_replied = any(
-                  sent["subject"] == subject and 
-                  sent["to"] == from_header 
-                  for sent in sent_emails
-              )
+            # Check if this email is in the sent emails list
+            if any(sent["to"] == recipient and sent["subject"] == subject for sent in sent_emails):
+                print(f"Skipping already replied email (found in sent): {subject}")
+                replied_to.add(email_key)
+                continue
 
-              if not already_replied:
-                  email_body = email["body"]
-                  print(f"Generating response for email from {recipient} with subject: {subject}")
+            try:
+                # Generate AI response
+                ai_response = generate_manual_response(email["body"])
+                
+                # Send the email
+                send_mail(
+                    subject,
+                    ai_response,
+                    sender_email,
+                    [recipient],
+                    fail_silently=False,
+                )
+                
+                responses_sent.append({
+                    "to": recipient,
+                    "subject": subject,
+                    "status": "sent"
+                })
+                replied_to.add(email_key)
+                print(f"Sent reply to: {recipient} - {subject}")
+                
+            except Exception as e:
+                print(f"Error processing email {subject}: {str(e)}")
+                responses_sent.append({
+                    "to": recipient,
+                    "subject": subject,
+                    "status": "error",
+                    "error": str(e)
+                })
 
-                  # Generate AI Response
-                  ai_response = generate_manual_response(email_body)
+        return Response({
+            "message": f"Processed {len(inquiry_emails)} inquiry emails",
+            "responses_sent": responses_sent
+        })
 
-                  # Send Email
-                  send_mail(
-                      subject,
-                      ai_response,
-                      sender_email,
-                      [recipient],
-                      fail_silently=False,
-                  )
-
-                  responses_sent.append({
-                      "to": recipient,
-                      "subject": subject,
-                      "body": ai_response
-                  })
-                  replied_to.add(email_key)
-                  print(f"Sent reply to {recipient} with subject: {subject}")
-              else:
-                  print(f"Skipping already replied email to {recipient} with subject: {subject}")
-
-          print(f"Total responses sent: {len(responses_sent)}")
-          return JsonResponse({"message": "AI responses sent successfully.", "responses": responses_sent})
-
-      except Exception as e:
-          print(f"Error in auto_reply_inquiry_emails: {str(e)}")
-          return JsonResponse({"error": str(e)}, status=500)
-
-  return JsonResponse({"error": "Only POST requests are allowed."}, status=405)
+    except Exception as e:
+        print(f"Error in auto_reply_inquiry_emails: {str(e)}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['DELETE'])
 @renderer_classes([JSONRenderer])
@@ -313,5 +335,17 @@ def delete_email_view(request, message_id):
         if success:
             return Response({"message": message}, status=status.HTTP_200_OK)
         return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@renderer_classes([JSONRenderer])
+def logout_view(request):
+    """Logout the current user"""
+    try:
+        logout(request)
+        return Response({
+            "message": "Logged out successfully"
+        })
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

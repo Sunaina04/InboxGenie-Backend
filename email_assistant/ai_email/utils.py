@@ -1,9 +1,17 @@
 import os
 import base64
+import json
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
+import google.generativeai as genai
+import time
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.renderers import JSONRenderer
+from rest_framework.decorators import api_view, renderer_classes
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -13,21 +21,6 @@ SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/gmail.modify'  # This scope allows deleting emails
 ]
-
-# def authenticate_gmail():
-#     """Authenticate and return Gmail API service"""
-#     creds = None
-
-#     if os.path.exists("token.json"):
-#         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
-
-#     if not creds or not creds.valid:
-#         flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-#         creds = flow.run_local_server(port=8080, access_type="offline", prompt="consent")
-#         with open("token.json", "w") as token:
-#             token.write(creds.to_json())
-
-#     return build("gmail", "v1", credentials=creds)
 
 def decode_base64(data):
     """Decodes Base64-encoded email body from Gmail API"""
@@ -55,6 +48,14 @@ def get_email_body(email_data):
 
     return "No message body found"
 
+def is_inquiry_email(email):
+    """Check if an email is an inquiry email based on subject or content."""
+    inquiry_keywords = ["inquiry", "question", "help", "support", "request", "info"]
+    subject = email.get("subject", "").lower()
+    body = email.get("body", "").lower()
+
+    return any(keyword in subject or keyword in body for keyword in inquiry_keywords)
+
 def is_support_email(email):
     """Check if an email is a support-related email based on subject or content."""
     support_keywords = ["support", "help", "assistance", "technical", "issue", "problem", "troubleshoot", "bug", "error"]
@@ -76,7 +77,7 @@ def fetch_emails(access_token):
     
     try:
         # Create credentials from the access token
-        creds = Credentials(token=access_token)
+        creds = Credentials(token=access_token)        
         service = build("gmail", "v1", credentials=creds)
         
         if not service:
@@ -129,6 +130,8 @@ def fetch_emails(access_token):
                 }
 
                 # Add email categories
+                if is_inquiry_email(email_obj):
+                    email_obj["categories"].append("inquiry")
                 if is_support_email(email_obj):
                     email_obj["categories"].append("support")
                 if is_grievance_email(email_obj):

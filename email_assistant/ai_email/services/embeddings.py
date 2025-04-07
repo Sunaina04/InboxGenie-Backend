@@ -2,6 +2,17 @@ import chromadb
 from langchain_community.vectorstores import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from .pdf_loader import load_manual
+import time
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+def generate_embeddings_with_retry(embeddings, text):
+    """Generate embeddings with retry logic for handling timeouts"""
+    try:
+        return embeddings.embed_query(text)
+    except Exception as e:
+        print(f"Error generating embeddings: {str(e)}")
+        raise
 
 def store_manual_embeddings(pdf_path):
     """Generates embeddings for the washing machine manual and stores them in ChromaDB."""
@@ -13,13 +24,20 @@ def store_manual_embeddings(pdf_path):
     # Initialize ChromaDB client
     chroma_client = chromadb.PersistentClient(path="./chroma_db")
 
-    # Generate embeddings
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+    # Generate embeddings with timeout handling
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001",
+        request_timeout=30  # Set timeout to 30 seconds
+    )
 
-    # Debug: Check if embeddings are generated
-    sample_embedding = embeddings.embed_query("Test query")
-    if not sample_embedding:
-        raise ValueError("Embeddings generation failed.")
+    # Debug: Check if embeddings are generated with retry
+    try:
+        sample_embedding = generate_embeddings_with_retry(embeddings, "Test query")
+        if not sample_embedding:
+            raise ValueError("Embeddings generation failed.")
+    except Exception as e:
+        print(f"Failed to generate sample embedding after retries: {str(e)}")
+        raise
 
     # Store vectors in ChromaDB
     vectorstore = Chroma.from_documents(
@@ -28,8 +46,11 @@ def store_manual_embeddings(pdf_path):
 
     return vectorstore
 
-
-pdf_path = "ai_email/manual.pdf"
-
-vector_store = store_manual_embeddings(pdf_path)
+# Initialize vector store with error handling
+try:
+    pdf_path = "ai_email/manual.pdf"
+    vector_store = store_manual_embeddings(pdf_path)
+except Exception as e:
+    print(f"Error initializing vector store: {str(e)}")
+    vector_store = None
 
