@@ -2,16 +2,9 @@ import os
 import base64
 import json
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from google.auth.transport.requests import Request
+
 import google.generativeai as genai
-import time
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.renderers import JSONRenderer
-from rest_framework.decorators import api_view, renderer_classes
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

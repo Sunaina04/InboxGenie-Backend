@@ -1,9 +1,11 @@
-from rest_framework.decorators import api_view, renderer_classes
+from rest_framework.decorators import api_view, renderer_classes, permission_classes, parser_classes
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
 from django.http import JsonResponse
 from django.core.mail import send_mail
-from .utils import fetch_emails, fetch_sent_emails, delete_email
+from .utils import fetch_emails, fetch_sent_emails, delete_email, is_inquiry_email
 import google.generativeai as genai
 from dotenv import load_dotenv
 from django.conf import settings 
@@ -16,6 +18,7 @@ from django.views.decorators.csrf import csrf_exempt
 from .services.gemini_ai import generate_manual_response
 from django.contrib.auth import login
 from rest_framework.renderers import JSONRenderer
+from .models import Manual
 
 load_dotenv()
 User = get_user_model()
@@ -83,18 +86,18 @@ def get_emails(request):
         emails, user_info = fetch_emails(access_token)
         
         # Debug information
-        print(f"Total emails fetched: {len(emails)}")
+        # print(f"Total emails fetched: {len(emails)}")
         read_emails = [email for email in emails if email.get("is_read", False)]
-        print(f"Read emails count: {len(read_emails)}")
-        print("Email read statuses:", [email.get("is_read", False) for email in emails])
+        # print(f"Read emails count: {len(read_emails)}")
+        # print("Email read statuses:", [email.get("is_read", False) for email in emails])
 
         # Filter by read status if specified
         if request.GET.get("read") == "true":
             emails = [email for email in emails if email.get("is_read", False)]  # Show read emails
-            print(f"Filtered read emails count: {len(emails)}")
+            # print(f"Filtered read emails count: {len(emails)}")
         elif request.GET.get("read") == "false":
             emails = [email for email in emails if not email.get("is_read", False)]  # Show unread emails
-            print(f"Filtered unread emails count: {len(emails)}")
+            # print(f"Filtered unread emails count: {len(emails)}")
         # Filter by category if specified
         elif request.GET.get("inquiry") == "true":
             emails = [email for email in emails if "inquiry" in email.get("categories", [])]
@@ -108,26 +111,9 @@ def get_emails(request):
             "user_info": user_info
         })
     except Exception as e:
-        print(f"Error fetching emails: {str(e)}")
+        # print(f"Error fetching emails: {str(e)}")
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-
-# def is_support_email(email):
-#     """Check if an email is a support-related email based on subject or content."""
-#     support_keywords = ["support", "help", "assistance", "technical", "issue", "problem", "troubleshoot", "bug", "error"]
-#     subject = email.get("subject", "").lower()
-#     body = email.get("body", "").lower()
-
-#     return any(keyword in subject or keyword in body for keyword in support_keywords)
-
-# def is_grievance_email(email):
-#     """Check if an email is a grievance/complaint email based on subject or content."""
-#     grievance_keywords = ["complaint", "grievance", "dispute", "unhappy", "dissatisfied", "wrong", "incorrect", "bad", "poor", "terrible"]
-#     subject = email.get("subject", "").lower()
-#     body = email.get("body", "").lower()
-
-#     return any(keyword in subject or keyword in body for keyword in grievance_keywords)
 
 @api_view(['GET'])
 @renderer_classes([JSONRenderer])
@@ -349,3 +335,22 @@ def logout_view(request):
         })
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def upload_manual(request):
+    print(f"User: {request.user}")  # Log the user
+    uploaded_file = request.FILES.get('file')
+    filename = request.data.get('filename', uploaded_file.name)
+
+    if not uploaded_file:
+        return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    manual = Manual.objects.create(
+        user=request.user,
+        file=uploaded_file,
+        filename=filename
+    )
+
+    return Response({'message': 'Manual uploaded successfully', 'manual_id': manual.id})

@@ -22,7 +22,17 @@ def store_manual_embeddings(pdf_path):
         raise ValueError("No text chunks were extracted from the PDF.")
 
     # Initialize ChromaDB client
-    chroma_client = chromadb.PersistentClient(path="./chroma_db")
+    chroma_client = chromadb.Client()
+
+    # Create a new collection
+    collection_name = "lg_washing_manual"
+    new_collection = chroma_client.create_collection(name=collection_name)
+
+    print(f"Collection '{collection_name}' created successfully.")
+
+    # List all collections to verify
+    collections = chroma_client.list_collections()
+    print("Current collections:", collections)
 
     # Generate embeddings with timeout handling
     embeddings = GoogleGenerativeAIEmbeddings(
@@ -41,16 +51,12 @@ def store_manual_embeddings(pdf_path):
 
     # Store vectors in ChromaDB
     vectorstore = Chroma.from_documents(
-        text_chunks, embeddings, client=chroma_client, collection_name="washing_manual"
+        text_chunks, embeddings, client=chroma_client, collection_name="lg_washing_manual"
     )
 
+    # return chroma_client, collection_name, vectorstore
     return vectorstore
 
-# Initialize vector store with error handling
-try:
-    pdf_path = "ai_email/manual.pdf"
-    vector_store = store_manual_embeddings(pdf_path)
-except Exception as e:
-    print(f"Error initializing vector store: {str(e)}")
-    vector_store = None
+pdf_path = "ai_email/lg washing machine manual.pdf"
+vector_store = store_manual_embeddings(pdf_path) 
 

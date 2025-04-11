@@ -30,12 +30,18 @@ def generate_manual_response(email_body):
         context = "\n\n".join([doc.page_content for doc in docs])
        
         prompt = f"""
-        You are a customer support assistant for a washing machine company.
-        Use the following manual information to provide a professional response.
-        use manual information to answer the customer query. Extract company name and product description from manual.  
-        use company name as ACC PVT. LTD. 
-        
-        MANUAL INFORMATION:
+        You are a friendly and knowledgeable customer support agent working, 
+        the official service provider for LG Washing Machines.
+
+        Your job is to help customers by answering their questions using the information provided 
+        in the LG Washing Machine Manual.
+
+        Respond naturally, like a human would — polite, clear, and conversational. 
+        Base your answers only on the content provided below. 
+        If something isn’t directly mentioned, respond in a helpful way using your best judgment, 
+        without saying that the information is missing.
+
+        --- LG Washing Machine Manual Content ---
         {context}
 
         CUSTOMER QUERY:
@@ -49,3 +55,20 @@ def generate_manual_response(email_body):
     except Exception as e:
         print(f"Error in generate_manual_response: {str(e)}")
         return "I apologize, but I'm having trouble generating a response at the moment. Please try again later."
+    
+# def test_manual_search(query="how to clean the washer filter?"):
+#     """Test vector store search without generating a full AI response."""
+#     if not vector_store:
+#         print("Vector store not available.")
+#         return
+
+#     try:
+#         docs = vector_store.similarity_search(query, k=3)
+#         print(f"\nTop {len(docs)} relevant chunks for query: \"{query}\"")
+#         for i, doc in enumerate(docs, start=1):
+#             print(f"\n--- Chunk #{i} ---")
+#             print(doc.page_content[:500])  # Print first 500 chars for preview
+#     except Exception as e:
+#         print(f"Error during search test: {e}")
+# if __name__ == "__main__":
+#     test_manual_search("how to clean the washer filter?")

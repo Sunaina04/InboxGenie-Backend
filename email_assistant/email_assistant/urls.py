@@ -15,6 +15,8 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
+from django.conf import settings
+from django.conf.urls.static import static
 from django.urls import path
 from ai_email.views import (
     get_emails, 
@@ -24,6 +26,7 @@ from ai_email.views import (
     auto_reply_inquiry_emails,
     delete_email_view,
     google_login,
+    upload_manual,
 )
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -34,4 +37,8 @@ urlpatterns = [
     path("auto-reply-inquiries/", auto_reply_inquiry_emails, name="auto_reply"),
     path('delete-email/<str:message_id>/', delete_email_view, name='delete_email'),
     path('auth/google-login/', google_login, name='google_login'),
+    path('api/manuals/', upload_manual, name='upload-manual'),
 ]
+# Serve media files during development
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
