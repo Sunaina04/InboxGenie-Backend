@@ -203,70 +203,41 @@ def send_ai_email(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 @api_view(['POST'])
 @renderer_classes([JSONRenderer])
-def auto_reply_inquiry_emails(request):
-  """Automatically reply to all filtered inquiry emails with AI-generated responses.""" 
-  if request.method == "POST":
+def auto_reply_emails(request):
+    """Send AI-generated replies to selected emails."""
     try:
-        # Get access token from Authorization header
+        # Extract access token
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
-            return Response({'error': 'Invalid Authorization header format'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Invalid Authorization header'}, status=400)
         
         access_token = auth_header.split('Bearer ')[1]
-        if not access_token:
-            return Response({'error': 'Access token is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Fetch emails using the access token
-        emails, _ = fetch_emails(access_token)
-        sent_emails = fetch_sent_emails(access_token)
-
-        # Filter Inquiry Emails
-        inquiry_emails = [email for email in emails if is_inquiry_email(email)]
-        print(f"Found {len(inquiry_emails)} inquiry emails")
-
-        if not inquiry_emails:
-            return Response({"message": "No inquiry emails found."}, status=status.HTTP_200_OK)
+        # Extract selected emails from payload
+        selected_emails = request.data.get('emails', [])
+        if not selected_emails:
+            return Response({'error': 'No emails provided'}, status=400)
 
         sender_email = settings.EMAIL_HOST_USER
         responses_sent = []
-        replied_to = set()  # Track unique recipient+subject combinations we've replied to
 
-        for email in inquiry_emails:
-            # Extract email address from the "From" field which might contain name <email>
-            from_header = email["from"]
-            # Extract email address if it's in the format "Name <email@example.com>"
-            if "<" in from_header and ">" in from_header:
-                recipient = from_header[from_header.find("<")+1:from_header.find(">")]
-            else:
-                recipient = from_header.strip()
+        for email in selected_emails:
+            from_header = email.get("from", "")
+            recipient = (
+                from_header[from_header.find("<")+1:from_header.find(">")]
+                if "<" in from_header and ">" in from_header
+                else from_header
+            )
 
-            # Get the subject and normalize it
-            subject = email["subject"]
+            subject = email.get("subject", "")
             if not subject.startswith("Re:"):
                 subject = f"Re: {subject}"
-            
-            # Create a unique key combining recipient and subject
-            email_key = f"{recipient}_{subject}"
-            
-            # Check if we've already replied to this email
-            if email_key in replied_to:
-                print(f"Skipping already replied email: {subject}")
-                continue
 
-            # Check if this email is in the sent emails list
-            if any(sent["to"] == recipient and sent["subject"] == subject for sent in sent_emails):
-                print(f"Skipping already replied email (found in sent): {subject}")
-                replied_to.add(email_key)
-                continue
-
+            body = email.get("body", "")
             try:
-                # Generate AI response
-                ai_response = generate_manual_response(email["body"])
-                
-                # Send the email
+                ai_response = generate_manual_response(body)
                 send_mail(
                     subject,
                     ai_response,
@@ -274,17 +245,14 @@ def auto_reply_inquiry_emails(request):
                     [recipient],
                     fail_silently=False,
                 )
-                
+
                 responses_sent.append({
                     "to": recipient,
                     "subject": subject,
                     "status": "sent"
                 })
-                replied_to.add(email_key)
-                print(f"Sent reply to: {recipient} - {subject}")
-                
+
             except Exception as e:
-                print(f"Error processing email {subject}: {str(e)}")
                 responses_sent.append({
                     "to": recipient,
                     "subject": subject,
@@ -293,13 +261,12 @@ def auto_reply_inquiry_emails(request):
                 })
 
         return Response({
-            "message": f"Processed {len(inquiry_emails)} inquiry emails",
+            "message": f"Processed {len(responses_sent)} selected emails",
             "responses_sent": responses_sent
-        })
+        }, status=200)
 
     except Exception as e:
-        print(f"Error in auto_reply_inquiry_emails: {str(e)}")
-        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': str(e)}, status=500)
 
 @api_view(['DELETE'])
 @renderer_classes([JSONRenderer])
