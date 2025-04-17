@@ -319,22 +319,30 @@ def logout_view(request):
         })
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-@csrf_exempt 
-@api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-@parser_classes([MultiPartParser, FormParser])
-def upload_manual(request):
 
-    print("User: ", get_user(request))  # Log the user
+@csrf_exempt
+@api_view(['POST'])
+@parser_classes([MultiPartParser, FormParser])    
+def upload_manual(request):
     uploaded_file = request.FILES.get('file')
     filename = request.data.get('filename', uploaded_file.name)
+    email = request.data.get('email')
 
-    if not uploaded_file:
-        return Response({'error': 'No file uploaded.'}, status=status.HTTP_400_BAD_REQUEST)
+    if not uploaded_file or not email:
+        return Response({'error': 'Missing file or email.'}, status=status.HTTP_400_BAD_REQUEST)
 
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found with given email.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Check for duplicate filename for this user
+    if Manual.objects.filter(user=user, filename=filename).exists():
+        return Response({'error': 'A manual with the same filename already exists.'}, status=status.HTTP_409_CONFLICT)
+
+    # Save the manual
     manual = Manual.objects.create(
-        user=request.user,
+        user=user,
         file=uploaded_file,
         filename=filename
     )
