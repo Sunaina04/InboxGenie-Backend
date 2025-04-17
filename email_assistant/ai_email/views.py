@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 from django.conf import settings 
 from google.oauth2 import id_token
 from google.auth.transport import requests
-from django.contrib.auth import get_user_model   
+from django.contrib.auth import get_user_model, get_user  
 import os
 import json
 from django.views.decorators.csrf import csrf_exempt
@@ -19,10 +19,18 @@ from .services.gemini_ai import generate_manual_response
 from django.contrib.auth import login
 from rest_framework.renderers import JSONRenderer
 from .models import Manual
+# from rest_framework_simplejwt.tokens import RefreshToken
 
 load_dotenv()
 User = get_user_model()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+# def get_tokens_for_user(user):
+#     refresh = RefreshToken.for_user(user)
+#     return {
+#         'refresh': str(refresh),
+#         'access': str(refresh.access_token),
+#     }
 
 @csrf_exempt
 @api_view(['POST'])
@@ -52,10 +60,13 @@ def google_login(request):
         )
 
         # 3. Log in User
+        # breakpoint()
         login(request, user)
-
+        # tokens = get_tokens_for_user(user)
+     
         return Response({
             "message": "Logged in successfully",
+            # "tokens": tokens,
             "user": {
                 "email": email,
                 "name": name,
@@ -90,15 +101,14 @@ def get_emails(request):
         read_emails = [email for email in emails if email.get("is_read", False)]
         # print(f"Read emails count: {len(read_emails)}")
         # print("Email read statuses:", [email.get("is_read", False) for email in emails])
-
-        # Filter by read status if specified
+      
         if request.GET.get("read") == "true":
             emails = [email for email in emails if email.get("is_read", False)]  # Show read emails
             # print(f"Filtered read emails count: {len(emails)}")
         elif request.GET.get("read") == "false":
             emails = [email for email in emails if not email.get("is_read", False)]  # Show unread emails
             # print(f"Filtered unread emails count: {len(emails)}")
-        # Filter by category if specified
+       
         elif request.GET.get("inquiry") == "true":
             emails = [email for email in emails if "inquiry" in email.get("categories", [])]
         elif request.GET.get("support") == "true":
@@ -215,8 +225,12 @@ def auto_reply_emails(request):
         
         access_token = auth_header.split('Bearer ')[1]
 
-        # Extract selected emails from payload
         selected_emails = request.data.get('emails', [])
+        
+        # Check if selected_emails is a dictionary and convert it to a list
+        if isinstance(selected_emails, dict):
+            selected_emails = [selected_emails]
+
         if not selected_emails:
             return Response({'error': 'No emails provided'}, status=400)
 
@@ -224,6 +238,9 @@ def auto_reply_emails(request):
         responses_sent = []
 
         for email in selected_emails:
+            if not isinstance(email, dict):
+                continue
+
             from_header = email.get("from", "")
             recipient = (
                 from_header[from_header.find("<")+1:from_header.find(">")]
@@ -303,11 +320,13 @@ def logout_view(request):
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
+@csrf_exempt 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+# @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser, FormParser])
 def upload_manual(request):
-    print(f"User: {request.user}")  # Log the user
+
+    print("User: ", get_user(request))  # Log the user
     uploaded_file = request.FILES.get('file')
     filename = request.data.get('filename', uploaded_file.name)
 

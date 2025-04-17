@@ -1,62 +1,46 @@
-import chromadb
+import os
 from langchain_community.vectorstores import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from .pdf_loader import load_manual
-import time
-from tenacity import retry, stop_after_attempt, wait_exponential
+import chromadb
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-def generate_embeddings_with_retry(embeddings, text):
-    """Generate embeddings with retry logic for handling timeouts"""
-    try:
-        return embeddings.embed_query(text)
-    except Exception as e:
-        print(f"Error generating embeddings: {str(e)}")
-        raise
+# Persistent DB path
+DB_PATH = "./chroma_db"
+client = chromadb.PersistentClient(path=DB_PATH)
 
 def store_manual_embeddings(pdf_path):
-    """Generates embeddings for the washing machine manual and stores them in ChromaDB."""
+    """Generates embeddings and stores them persistently using ChromaDB."""
+    collection_name = "lg_washing_manual"
+
+    # In Chroma v0.6.0+, this returns just a list of collection names
+    existing_collections = client.list_collections()
+    if collection_name in existing_collections:
+        print(f"Collection '{collection_name}' already exists. Loading existing embeddings...")
+        vectorstore = Chroma(
+            collection_name=collection_name,
+            embedding_function=GoogleGenerativeAIEmbeddings(model="models/embedding-001"),
+            client=client
+        )
+        return vectorstore
+
+    # Load text
     text_chunks = load_manual(pdf_path)
-    
     if not text_chunks:
         raise ValueError("No text chunks were extracted from the PDF.")
 
-    # Initialize ChromaDB client
-    chroma_client = chromadb.Client()
+    # Generate embeddings
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
-    # Create a new collection
-    collection_name = "lg_washing_manual"
-    new_collection = chroma_client.create_collection(name=collection_name)
-
-    print(f"Collection '{collection_name}' created successfully.")
-
-    # List all collections to verify
-    collections = chroma_client.list_collections()
-    print("Current collections:", collections)
-
-    # Generate embeddings with timeout handling
-    embeddings = GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        request_timeout=30  # Set timeout to 30 seconds
-    )
-
-    # Debug: Check if embeddings are generated with retry
-    try:
-        sample_embedding = generate_embeddings_with_retry(embeddings, "Test query")
-        if not sample_embedding:
-            raise ValueError("Embeddings generation failed.")
-    except Exception as e:
-        print(f"Failed to generate sample embedding after retries: {str(e)}")
-        raise
-
-    # Store vectors in ChromaDB
+    # Store to Chroma
     vectorstore = Chroma.from_documents(
-        text_chunks, embeddings, client=chroma_client, collection_name="lg_washing_manual"
+        text_chunks,
+        embeddings,
+        client=client,
+        collection_name=collection_name
     )
 
-    # return chroma_client, collection_name, vectorstore
+    print(f"Embeddings stored in collection '{collection_name}'.")
     return vectorstore
 
 pdf_path = "ai_email/lg washing machine manual.pdf"
-vector_store = store_manual_embeddings(pdf_path) 
-
+vector_store = store_manual_embeddings(pdf_path)
