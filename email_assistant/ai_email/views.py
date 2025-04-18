@@ -213,6 +213,7 @@ def send_ai_email(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
 @api_view(['POST'])
 @renderer_classes([JSONRenderer])
 def auto_reply_emails(request):
@@ -348,3 +349,51 @@ def upload_manual(request):
     )
 
     return Response({'message': 'Manual uploaded successfully', 'manual_id': manual.id})
+
+@api_view(['GET'])
+def list_manuals(request):
+    email = request.query_params.get('email')
+    
+    if not email:
+        return Response({'error': 'Email is required as a query parameter.'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found with given email.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    manuals = Manual.objects.filter(user=user).values('id', 'filename', 'file', 'uploaded_at')
+    return Response({'manuals': list(manuals)}, status=status.HTTP_200_OK)
+
+
+@api_view(['DELETE'])
+def delete_manual(request, manual_id):
+    try:
+        manual = Manual.objects.get(id=manual_id)
+        manual.delete()
+        return Response({'message': 'Manual deleted successfully'}, status=status.HTTP_200_OK)
+    except Manual.DoesNotExist:
+        return Response({'error': 'Manual not found'}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['PATCH'])
+def rename_manual(request, manual_id):
+    try:
+        print(manual_id, "....................manual id")
+        manual = Manual.objects.get(id=manual_id)
+        print("manual....................", manual)
+    except Manual.DoesNotExist:
+        return Response({'error': 'Manual not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    new_filename = request.data.get('filename')
+    if not new_filename:
+        print("here................")
+        return Response({'error': 'New filename is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Optional: check for duplicates
+    if Manual.objects.filter(user=manual.user, filename=new_filename).exclude(id=manual.id).exists():
+        print("here 2......................")
+        return Response({'error': 'Filename already exists.'}, status=status.HTTP_409_CONFLICT)
+
+    manual.filename = new_filename
+    manual.save()
+    return Response({'message': 'Filename updated successfully', 'filename': new_filename})

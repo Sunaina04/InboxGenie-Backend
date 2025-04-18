@@ -27,6 +27,9 @@ from ai_email.views import (
     delete_email_view,
     google_login,
     upload_manual,
+    list_manuals,
+    delete_manual,
+    rename_manual
 )
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -38,6 +41,10 @@ urlpatterns = [
     path('delete-email/<str:message_id>/', delete_email_view, name='delete_email'),
     path('auth/google-login/', google_login, name='google_login'),
     path('api/manuals/', upload_manual, name='upload-manual'),
+    path('api/list-manuals/', list_manuals, name='list_manuals'),
+    path('api/delete-manual/<int:manual_id>/', delete_manual, name='delete_manual'),
+    path('api/rename-manual/<int:manual_id>/', rename_manual, name='rename_manual'),
+
 ]
 # Serve media files during development
 if settings.DEBUG:
