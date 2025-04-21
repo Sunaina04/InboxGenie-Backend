@@ -5,3 +5,5 @@ email_assistant/ai_email/__pycache__
 email_assistant/token.json
 ai_email/.env.env
 email_assistant/ai_email/services/__pycache__
+__pycache__/
+*.py[cod]
