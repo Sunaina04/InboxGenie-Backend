@@ -164,7 +164,7 @@ DATABASES = {
         'USER': 'postgres', 
         'PASSWORD': 'password',  
         'HOST': 'localhost',  
-        'PORT': '5432',  
+        'PORT': '5433',  
     }
 }
 
@@ -218,3 +218,15 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "inboxgenie3@gmail.com"
 EMAIL_HOST_PASSWORD = "fbrclyguyevsgozt"
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+
+# Celery Broker URL using Redis
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+
+# Optional: Celery Result Backend using Redis (only if you need results stored)
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+
+# Optional: Set other Celery configurations as per your requirements
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'

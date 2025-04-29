@@ -15,4 +15,5 @@ google-generativeai
 chromadb
 langchain-community
 djangorestframework-simplejwt
-
+celery
+redis

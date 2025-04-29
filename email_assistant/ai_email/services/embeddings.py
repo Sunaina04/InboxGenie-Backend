@@ -8,9 +8,18 @@ import chromadb
 DB_PATH = "./chroma_db"
 client = chromadb.PersistentClient(path=DB_PATH)
 
-def store_manual_embeddings(pdf_path):
+def load_vector_store(collection_name):
+    existing_collections = client.list_collections()
+
+    if collection_name not in existing_collections:
+        raise ValueError(f"Collection {collection_name} does not exist.")
+
+    collection = client.get_collection(collection_name)
+    return collection
+
+def store_manual_embeddings(pdf_path, user_id):
     """Generates embeddings and stores them persistently using ChromaDB."""
-    collection_name = "lg_washing_manual"
+    collection_name = f"user_{user_id}_manual_embeddings"
 
     # In Chroma v0.6.0+, this returns just a list of collection names
     existing_collections = client.list_collections()
@@ -42,5 +51,5 @@ def store_manual_embeddings(pdf_path):
     print(f"Embeddings stored in collection '{collection_name}'.")
     return vectorstore
 
-pdf_path = "ai_email/lg washing machine manual.pdf"
-vector_store = store_manual_embeddings(pdf_path)
+# pdf_path = "ai_email/lg washing machine manual.pdf"
+# vector_store = store_manual_embeddings(pdf_path)

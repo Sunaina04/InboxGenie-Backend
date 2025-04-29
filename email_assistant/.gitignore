@@ -7,3 +7,5 @@ ai_email/.env.env
 email_assistant/ai_email/services/__pycache__
 __pycache__/
 *.py[cod]
+**/__pycache__/*.pyc
+venv/

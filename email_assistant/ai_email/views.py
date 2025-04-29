@@ -19,6 +19,9 @@ from .services.gemini_ai import generate_manual_response
 from django.contrib.auth import login
 from rest_framework.renderers import JSONRenderer
 from .models import Manual
+from .services.tasks import generate_manual_embeddings_task
+import sys
+
 # from rest_framework_simplejwt.tokens import RefreshToken
 
 load_dotenv()
@@ -167,11 +170,14 @@ def generate_email_reply(request):
           sender = data.get("from", "")
           recipient = data.get("to", "")
           subject = data.get("subject", "Re: No Subject")
+          user_email = data.get("user_email")
 
           if not email_body:
               return JsonResponse({"error": "Email body is required."}, status=400)
+          
+          print("user email", user_email)
 
-          ai_response = generate_manual_response(email_body)
+          ai_response = generate_manual_response(email_body, user_email)
 
           return JsonResponse({
               "from": recipient,  
@@ -347,6 +353,9 @@ def upload_manual(request):
         file=uploaded_file,
         filename=filename
     )
+    file_path = manual.file.path
+    print("user",user)
+    generate_manual_embeddings_task.delay(file_path, user.id)
 
     return Response({'message': 'Manual uploaded successfully', 'manual_id': manual.id})
 
@@ -397,3 +406,5 @@ def rename_manual(request, manual_id):
     manual.filename = new_filename
     manual.save()
     return Response({'message': 'Filename updated successfully', 'filename': new_filename})
+
+print(sys.path)
