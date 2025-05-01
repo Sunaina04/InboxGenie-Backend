@@ -29,7 +29,8 @@ from ai_email.views import (
     upload_manual,
     list_manuals,
     delete_manual,
-    rename_manual
+    rename_manual,
+    retry_embedding
 )
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -44,6 +45,7 @@ urlpatterns = [
     path('api/list-manuals/', list_manuals, name='list_manuals'),
     path('api/delete-manual/<int:manual_id>/', delete_manual, name='delete_manual'),
     path('api/rename-manual/<int:manual_id>/', rename_manual, name='rename_manual'),
+    path('api/manuals/<int:manual_id>/retry-embedding/', retry_embedding, name='retry-embedding')
 
 ]
 # Serve media files during development

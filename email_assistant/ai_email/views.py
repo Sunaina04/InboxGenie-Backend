@@ -1,7 +1,6 @@
-from rest_framework.decorators import api_view, renderer_classes, permission_classes, parser_classes
+from rest_framework.decorators import api_view, renderer_classes, parser_classes
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.http import JsonResponse
 from django.core.mail import send_mail
@@ -16,6 +15,7 @@ import os
 import json
 from django.views.decorators.csrf import csrf_exempt
 from .services.gemini_ai import generate_manual_response
+from .services.embeddings import delete_manual_embeddings
 from django.contrib.auth import login
 from rest_framework.renderers import JSONRenderer
 from .models import Manual
@@ -233,6 +233,7 @@ def auto_reply_emails(request):
         access_token = auth_header.split('Bearer ')[1]
 
         selected_emails = request.data.get('emails', [])
+        user_email = request.data.get('user_email')
         
         # Check if selected_emails is a dictionary and convert it to a list
         if isinstance(selected_emails, dict):
@@ -261,7 +262,7 @@ def auto_reply_emails(request):
 
             body = email.get("body", "")
             try:
-                ai_response = generate_manual_response(body)
+                ai_response = generate_manual_response(body, user_email)
                 send_mail(
                     subject,
                     ai_response,
@@ -326,7 +327,6 @@ def logout_view(request):
         })
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 @csrf_exempt
 @api_view(['POST'])
 @parser_classes([MultiPartParser, FormParser])    
@@ -351,13 +351,41 @@ def upload_manual(request):
     manual = Manual.objects.create(
         user=user,
         file=uploaded_file,
-        filename=filename
+        filename=filename,
+        embedding_status='pending'
     )
-    file_path = manual.file.path
-    print("user",user)
-    generate_manual_embeddings_task.delay(file_path, user.id)
+
+    # Call the task to generate embeddings
+    generate_manual_embeddings_task.delay(manual.id, user.id)
+
+    # Check for orphaned files in the directory and clean them up
+    try:
+        clean_orphaned_files()
+    except Exception as e:
+        # Log the error in case file cleanup fails
+        print(f"Error cleaning orphaned files: {str(e)}")
 
     return Response({'message': 'Manual uploaded successfully', 'manual_id': manual.id})
+
+
+def clean_orphaned_files():
+    """Cleanup orphaned manual files in the media directory."""
+    media_dir = os.path.join(settings.MEDIA_ROOT, 'manuals')
+    all_files = os.listdir(media_dir)
+    
+    # Get the IDs of all manuals from the database
+    manual_files = Manual.objects.values_list('file', flat=True)
+    manual_file_names = [os.path.basename(file) for file in manual_files]
+
+    # Delete orphaned files (files that are in the folder but not in the database)
+    for file_name in all_files:
+        if file_name not in manual_file_names:
+            file_path = os.path.join(media_dir, file_name)
+            try:
+                os.remove(file_path)
+                print(f"Orphaned file deleted: {file_name}")
+            except Exception as e:
+                print(f"Failed to delete orphaned file {file_name}: {str(e)}")
 
 @api_view(['GET'])
 def list_manuals(request):
@@ -371,14 +399,24 @@ def list_manuals(request):
     except User.DoesNotExist:
         return Response({'error': 'User not found with given email.'}, status=status.HTTP_404_NOT_FOUND)
     
-    manuals = Manual.objects.filter(user=user).values('id', 'filename', 'file', 'uploaded_at')
+    manuals = Manual.objects.filter(user=user).values('id', 'filename', 'file', 'uploaded_at', 'embedding_status')
     return Response({'manuals': list(manuals)}, status=status.HTTP_200_OK)
-
 
 @api_view(['DELETE'])
 def delete_manual(request, manual_id):
+    email = request.query_params.get('email') 
+
+    if not email:
+        return Response({'error': 'Email is required as a query parameter.'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response({'error': 'User not found with given email.'}, status=status.HTTP_404_NOT_FOUND)
+
     try:
         manual = Manual.objects.get(id=manual_id)
+        delete_manual_embeddings(user.id, manual_id)
         manual.delete()
         return Response({'message': 'Manual deleted successfully'}, status=status.HTTP_200_OK)
     except Manual.DoesNotExist:
@@ -408,3 +446,29 @@ def rename_manual(request, manual_id):
     return Response({'message': 'Filename updated successfully', 'filename': new_filename})
 
 print(sys.path)
+
+@api_view(['POST'])
+def retry_embedding(request, manual_id):
+    # Extract the user_email from the request body
+    user_email = request.data.get('user_email')
+
+    if not user_email:
+        return Response({"error": "User email is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        # Retrieve the manual from the database
+        manual = Manual.objects.get(id=manual_id)
+    except Manual.DoesNotExist:
+        return Response({"error": "Manual not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        # Update the status of the manual to 'queued'
+        manual.embedding_status = 'queued'
+        manual.save()
+
+        # Call the Celery task again, passing manual_id and user_email
+        generate_manual_embeddings_task.delay(manual.id, user_email)
+
+        return Response({"message": "Embedding retry task queued"}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

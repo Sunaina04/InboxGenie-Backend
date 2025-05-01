@@ -17,9 +17,9 @@ def load_vector_store(collection_name):
     collection = client.get_collection(collection_name)
     return collection
 
-def store_manual_embeddings(pdf_path, user_id):
+def store_manual_embeddings(pdf_path, user_id, manual_id):
     """Generates embeddings and stores them persistently using ChromaDB."""
-    collection_name = f"user_{user_id}_manual_embeddings"
+    collection_name = f"user_{user_id}_manual_{manual_id}"
 
     # In Chroma v0.6.0+, this returns just a list of collection names
     existing_collections = client.list_collections()
@@ -50,6 +50,22 @@ def store_manual_embeddings(pdf_path, user_id):
 
     print(f"Embeddings stored in collection '{collection_name}'.")
     return vectorstore
+def delete_manual_embeddings(user_id, manual_id):
+    """Deletes the ChromaDB collection for the given manual."""
+    collection_name = f"user_{user_id}_manual_{manual_id}"
+    
+    try:
+        existing_collections = client.list_collections()
+        if collection_name in existing_collections:
+            client.delete_collection(name=collection_name)
+            print(f"Deleted embeddings collection: {collection_name}")
+            return True
+        else:
+            print(f"Collection '{collection_name}' does not exist.")
+            return False
+    except Exception as e:
+        print(f"Failed to delete collection '{collection_name}': {str(e)}")
+        raise
 
 # pdf_path = "ai_email/lg washing machine manual.pdf"
 # vector_store = store_manual_embeddings(pdf_path)
