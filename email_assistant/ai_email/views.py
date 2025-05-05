@@ -4,7 +4,8 @@ from rest_framework import status
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.http import JsonResponse
 from django.core.mail import send_mail
-from .utils import fetch_emails, fetch_sent_emails, delete_email, is_inquiry_email
+from .utils import fetch_emails, delete_email
+# fetch_sent_emails, delete_email, is_inquiry_email
 import google.generativeai as genai
 from dotenv import load_dotenv
 from django.conf import settings 
@@ -20,6 +21,7 @@ from django.contrib.auth import login
 from rest_framework.renderers import JSONRenderer
 from .models import Manual
 from .services.tasks import generate_manual_embeddings_task
+from .services.redis_utils import fetch_from_redis_cache
 import sys
 
 # from rest_framework_simplejwt.tokens import RefreshToken
@@ -96,11 +98,27 @@ def get_emails(request):
         return Response({'error': 'Access token is required'}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        # Fetch emails using the access token
+        # Category-based cache fetch
+        for category in ['inquiry', 'support', 'grievance']:
+            if request.GET.get(category) == 'true':
+                cached_emails = fetch_from_redis_cache(f'emails:{category}')
+                # Ensure emails is always a list
+                if cached_emails:
+                    if isinstance(cached_emails, dict):
+                        cached_emails = [cached_emails]
+                    elif not isinstance(cached_emails, list):
+                        cached_emails = []
+                else:
+                    cached_emails = []
+
+                return Response({
+                    "emails": cached_emails,
+                    "user_info": {"source": "cache", "category": category}
+                })
         emails, user_info = fetch_emails(access_token)
         
         # Debug information
-        # print(f"Total emails fetched: {len(emails)}")
+        print(f"Total emails fetched: {len(emails)}")
         read_emails = [email for email in emails if email.get("is_read", False)]
         # print(f"Read emails count: {len(read_emails)}")
         # print("Email read statuses:", [email.get("is_read", False) for email in emails])
@@ -112,12 +130,12 @@ def get_emails(request):
             emails = [email for email in emails if not email.get("is_read", False)]  # Show unread emails
             # print(f"Filtered unread emails count: {len(emails)}")
        
-        elif request.GET.get("inquiry") == "true":
-            emails = [email for email in emails if "inquiry" in email.get("categories", [])]
-        elif request.GET.get("support") == "true":
-            emails = [email for email in emails if "support" in email.get("categories", [])]
-        elif request.GET.get("grievance") == "true":
-            emails = [email for email in emails if "grievance" in email.get("categories", [])]
+        # elif request.GET.get("inquiry") == "true":
+        #     emails = [email for email in emails if "inquiry" in email.get("categories", [])]
+        # elif request.GET.get("support") == "true":
+        #     emails = [email for email in emails if "support" in email.get("categories", [])]
+        # elif request.GET.get("grievance") == "true":
+        #     emails = [email for email in emails if "grievance" in email.get("categories", [])]
 
         return Response({
             "emails": emails,

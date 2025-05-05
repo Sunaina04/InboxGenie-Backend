@@ -3,6 +3,7 @@ import base64
 import json
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from .services.tasks import filter_email_task
 
 import google.generativeai as genai
 
@@ -41,29 +42,29 @@ def get_email_body(email_data):
 
     return "No message body found"
 
-def is_inquiry_email(email):
-    """Check if an email is an inquiry email based on subject or content."""
-    inquiry_keywords = ["inquiry", "question", "help", "support", "request", "info"]
-    subject = email.get("subject", "").lower()
-    body = email.get("body", "").lower()
+# def is_inquiry_email(email):
+#     """Check if an email is an inquiry email based on subject or content."""
+#     inquiry_keywords = ["inquiry", "question", "help", "support", "request", "info"]
+#     subject = email.get("subject", "").lower()
+#     body = email.get("body", "").lower()
 
-    return any(keyword in subject or keyword in body for keyword in inquiry_keywords)
+#     return any(keyword in subject or keyword in body for keyword in inquiry_keywords)
 
-def is_support_email(email):
-    """Check if an email is a support-related email based on subject or content."""
-    support_keywords = ["support", "help", "assistance", "technical", "issue", "problem", "troubleshoot", "bug", "error"]
-    subject = email.get("subject", "").lower()
-    body = email.get("body", "").lower()
+# def is_support_email(email):
+#     """Check if an email is a support-related email based on subject or content."""
+#     support_keywords = ["support", "help", "assistance", "technical", "issue", "problem", "troubleshoot", "bug", "error"]
+#     subject = email.get("subject", "").lower()
+#     body = email.get("body", "").lower()
 
-    return any(keyword in subject or keyword in body for keyword in support_keywords)
+#     return any(keyword in subject or keyword in body for keyword in support_keywords)
 
-def is_grievance_email(email):
-    """Check if an email is a grievance/complaint email based on subject or content."""
-    grievance_keywords = ["complaint", "grievance", "dispute", "unhappy", "dissatisfied", "wrong", "incorrect", "bad", "poor", "terrible"]
-    subject = email.get("subject", "").lower()
-    body = email.get("body", "").lower()
+# def is_grievance_email(email):
+#     """Check if an email is a grievance/complaint email based on subject or content."""
+#     grievance_keywords = ["complaint", "grievance", "dispute", "unhappy", "dissatisfied", "wrong", "incorrect", "bad", "poor", "terrible"]
+#     subject = email.get("subject", "").lower()
+#     body = email.get("body", "").lower()
 
-    return any(keyword in subject or keyword in body for keyword in grievance_keywords)
+#     return any(keyword in subject or keyword in body for keyword in grievance_keywords)
 
 def fetch_emails(access_token):
     """Fetch latest emails from Gmail API using the provided access token"""    
@@ -123,12 +124,14 @@ def fetch_emails(access_token):
                 }
 
                 # Add email categories
-                if is_inquiry_email(email_obj):
-                    email_obj["categories"].append("inquiry")
-                if is_support_email(email_obj):
-                    email_obj["categories"].append("support")
-                if is_grievance_email(email_obj):
-                    email_obj["categories"].append("grievance")
+                # if is_inquiry_email(email_obj):
+                #     email_obj["categories"].append("inquiry")
+                # if is_support_email(email_obj):
+                #     email_obj["categories"].append("support")
+                # if is_grievance_email(email_obj):
+                #     email_obj["categories"].append("grievance")
+                
+                filter_email_task.delay(email_obj)
 
                 full_email.append(email_obj)
                 print(f"Processed email: {subject}")

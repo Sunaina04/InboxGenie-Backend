@@ -1,5 +1,7 @@
 from celery import shared_task
 from .embeddings import store_manual_embeddings
+from .gemini_ai import classify_with_gemini
+from .redis_utils import cache_email_by_category  # Redis storage helper
 from ai_email.models import Manual
 
 @shared_task
@@ -29,5 +31,30 @@ def generate_manual_embeddings_task(manual_id, user_id):
         if 'manual' in locals():
             manual.embedding_status = 'failed'
             manual.save()
-        
         return {"status": "error", "error": str(e), "manual_id": manual_id}
+
+# Email Filtering Task
+@shared_task
+def filter_email_task(email_obj):
+    try:
+        # Use Gemini to classify email
+        email_id = email_obj.get("id")
+        subject = email_obj.get("subject")
+        body =  email_obj.get("body")
+        category = classify_with_gemini(subject, body)
+
+        # Store result in Redis
+        cache_email_by_category(category, email_obj)
+
+        return {
+            "status": "success",
+            "email_id": email_id,
+            "category": category
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "email_id": email_id
+        }

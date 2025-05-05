@@ -45,7 +45,10 @@ SECRET_KEY = 'django-insecure-x!r5$x!m1b3nmb#s*-7axwi1*#zx7rs%1+hric)1ncg5zb5jdk
 DEBUG = True
 
 ALLOWED_HOSTS = []
-
+# Redis configuration
+REDIS_HOST = 'localhost'  # Redis server IP
+REDIS_PORT = 6379         # Default Redis port
+REDIS_DB = 0             # Redis database number (default is 0)
 
 # Application definition
 

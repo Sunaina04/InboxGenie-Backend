@@ -80,3 +80,31 @@ def generate_manual_response(email_body, email, collection_name=None):
     except Exception as e:
         print(f"Error in generate_manual_response: {str(e)}")
         return "I apologize, but I'm having trouble generating a response at the moment. Please try again later."
+
+def classify_with_gemini(subject, body):
+    """Classifies email as inquiry, support, or grievance using Gemini."""
+    model = genai.GenerativeModel('gemini-1.5-flash')
+
+    prompt = f"""
+    You are an email classifier. Categorize the following email into one of these categories:
+    - inquiry
+    - support
+    - grievance
+
+    Return only the category name (e.g., 'inquiry').
+
+    Subject: {subject}
+    Body: {body}
+    """
+
+    try:
+        response = model.generate_content(prompt)
+        category = response.text.strip().lower()
+
+        if category not in ["inquiry", "support", "grievance"]:
+            return "unknown"
+
+        return category
+    except Exception as e:
+        print(f"Error in classify_with_gemini: {str(e)}")
+        return "error"
