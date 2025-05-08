@@ -7,7 +7,7 @@ redis_client = redis.StrictRedis(host=settings.REDIS_HOST, port=settings.REDIS_P
 
 PROCESSED_EMAIL_SET_KEY = "processed_emails"
 
-def cache_email_by_category(category, email_obj, expiration_time=3600):
+def cache_email_by_category(category, email_obj, expiration_time=86400):
     """
     Store or append the email to Redis cache by category.
     """
@@ -47,11 +47,10 @@ def fetch_from_redis_cache(cache_key):
 # === NEW FUNCTIONS FOR TRACKING PROCESSED EMAILS ===
 
 def is_email_processed(email_id):
-    """
-    Check if the email ID has already been processed.
-    """
     try:
-        return redis_client.sismember(PROCESSED_EMAIL_SET_KEY, email_id)
+        processed = redis_client.sismember(PROCESSED_EMAIL_SET_KEY, email_id)
+        print(f"[DEBUG] is_email_processed({email_id}) => {processed}")
+        return processed
     except Exception as e:
         print(f"Error checking processed email: {str(e)}")
         return False
@@ -63,5 +62,6 @@ def mark_email_as_processed(email_id):
     """
     try:
         redis_client.sadd(PROCESSED_EMAIL_SET_KEY, email_id)
+        redis_client.expire(PROCESSED_EMAIL_SET_KEY, 86400)
     except Exception as e:
         print(f"Error marking email as processed: {str(e)}")

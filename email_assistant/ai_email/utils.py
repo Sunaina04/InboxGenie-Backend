@@ -4,6 +4,7 @@ import json
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from .services.tasks import filter_email_task
+from .services.redis_utils import is_email_processed, mark_email_as_processed 
 
 import google.generativeai as genai
 
@@ -131,7 +132,13 @@ def fetch_emails(access_token):
                 # if is_grievance_email(email_obj):
                 #     email_obj["categories"].append("grievance")
                 
-                filter_email_task.delay(email_obj)
+                if not is_email_processed(msg_id):
+                    # Mark and process only if not already processed
+                    mark_email_as_processed(msg_id)
+                    filter_email_task.delay(email_obj)
+                    print(f"Email {msg_id} marked and sent for filtering.")
+                else:
+                    print(f"Email {msg_id} already processed. Skipping filtering.")
 
                 full_email.append(email_obj)
                 print(f"Processed email: {subject}")
